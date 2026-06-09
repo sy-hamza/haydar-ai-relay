@@ -25,6 +25,16 @@ class OtpVerifyModel(BaseModel):
 async def index():
     return {"status": "HAYDAR AI Relay Server is running!"}
 
+@app.get("/api/debug")
+async def debug_info():
+    import database as db
+    return {
+        "smtp_enabled": db.SMTP_ENABLED,
+        "smtp_user_set": bool(db.SMTP_USER),
+        "smtp_user_preview": db.SMTP_USER[:5] + "***" if db.SMTP_USER else "NOT SET",
+        "smtp_pass_set": bool(db.SMTP_PASS),
+    }
+
 # ── Send OTP ───────────────────────────────────────────────────────────────────
 @app.post("/api/auth/send-otp")
 async def send_otp(body: OtpRequestModel):

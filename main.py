@@ -120,6 +120,31 @@ async def login(data: dict):
     token = auth.generate_token(user["id"], user["email"], user.get("display_name", ""))
     return {"token": token, "email": user["email"], "display_name": user.get("display_name", "")}
 
+# ── Reset Password ─────────────────────────────────────────────────────────────
+@app.post("/api/auth/reset-password")
+async def reset_password(data: dict):
+    email    = (data.get("email") or "").strip()
+    password = (data.get("password") or "").strip()
+    otp_val  = (data.get("otp") or "").strip()
+
+    if not email or not password or not otp_val:
+        raise HTTPException(400, detail="يرجى تعبئة جميع الحقول")
+
+    if len(password) < 6:
+        raise HTTPException(400, detail="يجب أن تكون كلمة المرور 6 خانات على الأقل")
+
+    if not database.email_exists(email):
+        raise HTTPException(400, detail="البريد الإلكتروني غير مسجل")
+
+    if not database.verify_otp(email, otp_val):
+        raise HTTPException(400, detail="رمز التحقق غير صحيح أو منتهي الصلاحية")
+
+    success = await asyncio.to_thread(database.update_user_password, email, password)
+    if not success:
+        raise HTTPException(500, detail="فشل تحديث كلمة المرور")
+
+    return {"status": "success", "message": "تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن."}
+
 # ── WebSocket Rooms ────────────────────────────────────────────────────────────
 # rooms: { user_id (str): { "pc": ws|None, "mobile": ws|None } }
 rooms: dict = {}

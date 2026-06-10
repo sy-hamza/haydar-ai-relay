@@ -171,3 +171,18 @@ def send_otp_email(to_email: str, otp: str, display_name: str = "") -> bool:
     except Exception as e:
         print(f"[SMTP Error] {e}")
         return False
+
+def update_user_password(email: str, password: str) -> bool:
+    email = email.strip().lower()
+    pw_hash = hash_password(password)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute("UPDATE users SET password_hash = ? WHERE email = ?", (pw_hash, email))
+        conn.commit()
+        return c.rowcount > 0
+    except Exception as e:
+        print(f"[DB Error] {e}")
+        return False
+    finally:
+        conn.close()

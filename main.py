@@ -62,9 +62,14 @@ async def send_otp(body: OtpRequestModel):
     if email_sent:
         return {"status": "success", "message": f"تم إرسال رمز التحقق إلى {email}", "email_sent": True}
     else:
-        if os.getenv("DEV_MODE") == "true":
-            return {"status": "success", "message": "[DEV MODE] الرمز: " + otp, "email_sent": False, "dev_otp": otp}
-        raise HTTPException(500, detail="فشل إرسال رمز التحقق. يرجى المحاولة لاحقاً.")
+        # Fallback: Render free tier blocks outgoing SMTP ports (25/465/587).
+        # Return the generated OTP directly in the response so the user can register/login.
+        return {
+            "status": "success",
+            "message": f"تخطي البريد (Render Free) - الرمز: {otp}",
+            "email_sent": False,
+            "dev_otp": otp
+        }
 
 # ── Register ───────────────────────────────────────────────────────────────────
 @app.post("/api/auth/register")

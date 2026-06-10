@@ -4,9 +4,9 @@ import os
 from typing import Optional
 
 _default_secret = "haydar-ai-jwt-!@#$%^&*()_+2024-CHANGE-THIS-IN-PRODUCTION-ENV"
-JWT_SECRET = os.getenv("JWT_SECRET", _default_secret)
+JWT_SECRET = _default_secret
 if JWT_SECRET == _default_secret:
-    print("WARNING: Using default JWT secret. Set JWT_SECRET env var in production!")
+    print("WARNING: Using default JWT secret.")
 
 ALGORITHM = "HS256"
 

@@ -62,7 +62,9 @@ async def send_otp(body: OtpRequestModel):
     if email_sent:
         return {"status": "success", "message": f"تم إرسال رمز التحقق إلى {email}", "email_sent": True}
     else:
-        return {"status": "success", "message": "لم يتم تكوين البريد — الرمز: " + otp, "email_sent": False, "dev_otp": otp}
+        if os.getenv("DEV_MODE") == "true":
+            return {"status": "success", "message": "[DEV MODE] الرمز: " + otp, "email_sent": False, "dev_otp": otp}
+        raise HTTPException(500, detail="فشل إرسال رمز التحقق. يرجى المحاولة لاحقاً.")
 
 # ── Register ───────────────────────────────────────────────────────────────────
 @app.post("/api/auth/register")

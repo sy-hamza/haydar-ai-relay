@@ -62,12 +62,10 @@ async def send_otp(body: OtpRequestModel):
     otp = database.create_otp(email, name)
 
     # WebSocket SMTP Relay Check
-    user_id = database.get_user_id_by_email(email)
+    email_key = email.strip().lower()
     pc_ws = None
-    if user_id is not None:
-        user_id_str = str(user_id)
-        if user_id_str in rooms and rooms[user_id_str]["pc"]:
-            pc_ws = rooms[user_id_str]["pc"]
+    if email_key in rooms and rooms[email_key]["pc"]:
+        pc_ws = rooms[email_key]["pc"]
 
     if not pc_ws:
         for uid, room in rooms.items():
@@ -224,13 +222,13 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, token: str)
         await websocket.close(code=4001, reason="Invalid or expired token")
         return
 
-    user_id = str(user_info["user_id"])
+    user_id = user_info["email"].strip().lower()
     await websocket.accept()
 
     if user_id not in rooms:
         rooms[user_id] = {"pc": None, "mobile": None}
     rooms[user_id][client_type] = websocket
-    print(f"{client_type.upper()} connected — account: {user_id} ({user_info.get('email','')})")
+    print(f"{client_type.upper()} connected — account: {user_id}")
 
     other = "mobile" if client_type == "pc" else "pc"
     if rooms[user_id][other]:
@@ -244,21 +242,43 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, token: str)
         while True:
             message = await websocket.receive_text()
             
-            # Check for system_response from PC
+            # Check for system messages / responses from PC
             if client_type == "pc":
                 try:
                     parsed = json.loads(message)
-                    if isinstance(parsed, dict) and parsed.get("type") == "system_response":
+                    if isinstance(parsed, dict):
+                        mtype = parsed.get("type")
                         action = parsed.get("action")
-                        if action == "send_email":
+                        
+                        if mtype == "system" and action == "sync_account":
+                            sync_email = (parsed.get("email") or "").strip().lower()
+                            sync_name = (parsed.get("display_name") or "مستخدم").strip()
+                            sync_pwhash = (parsed.get("password_hash") or "").strip()
+                            
+                            if sync_email and sync_pwhash:
+                                print(f"[Relay Sync] Syncing account for {sync_email} from PC")
+                                conn = database.sqlite3.connect(database.DB_PATH)
+                                c = conn.cursor()
+                                try:
+                                    c.execute("INSERT OR REPLACE INTO users (display_name, email, password_hash) VALUES (?, ?, ?)",
+                                              (sync_name, sync_email, sync_pwhash))
+                                    conn.commit()
+                                    print(f"[Relay Sync] Account {sync_email} synced successfully.")
+                                except Exception as sync_err:
+                                    print(f"[Relay Sync Error] Failed to sync: {sync_err}")
+                                finally:
+                                    conn.close()
+                            continue
+                            
+                        elif mtype == "system_response" and action == "send_email":
                             to_email = parsed.get("to_email")
                             success = parsed.get("success", False)
                             email_key = (to_email or "").strip().lower()
                             if email_key in pending_emails:
                                 pending_emails[email_key].set_result(success)
-                        continue
-                except Exception:
-                    pass
+                            continue
+                except Exception as parse_err:
+                    print(f"[Relay System Parser Error] {parse_err}")
             
             target_ws = rooms[user_id][other]
             if target_ws:

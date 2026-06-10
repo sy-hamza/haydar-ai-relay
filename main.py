@@ -119,20 +119,35 @@ async def register(data: dict):
     password = (data.get("password") or "").strip()
     name     = (data.get("display_name") or data.get("name") or "مستخدم").strip()
     otp_val  = (data.get("otp") or "").strip()
+    system_token = (data.get("system_token") or "").strip()
 
     if not email or not password:
         raise HTTPException(400, detail="يرجى تعبئة جميع الحقول")
     if len(password) < 6:
         raise HTTPException(400, detail="يجب أن تكون كلمة المرور 6 خانات على الأقل")
 
-    # OTP is MANDATORY for registration
-    if not otp_val:
-        raise HTTPException(400, detail="رمز التحقق مطلوب")
-    if not database.verify_otp(email, otp_val):
-        raise HTTPException(400, detail="رمز التحقق غير صحيح أو منتهي الصلاحية")
+    # Verify if it's a trusted system request (e.g. from the PC server)
+    is_system = False
+    if system_token:
+        decoded = auth.verify_token(system_token)
+        if decoded and decoded.get("email") == "system@haydar.ai":
+            is_system = True
+
+    if not is_system:
+        # OTP is MANDATORY for registration
+        if not otp_val:
+            raise HTTPException(400, detail="رمز التحقق مطلوب")
+        if not database.verify_otp(email, otp_val):
+            raise HTTPException(400, detail="رمز التحقق غير صحيح أو منتهي الصلاحية")
 
     user = await asyncio.to_thread(database.register_user, name, email, password)
     if not user:
+        if is_system:
+            # If system request and user exists, update password and return token
+            await asyncio.to_thread(database.update_user_password, email, password)
+            uid = database.get_user_id_by_email(email) or -1
+            token = auth.generate_token(uid, email, name)
+            return {"token": token, "email": email, "display_name": name}
         raise HTTPException(400, detail="البريد الإلكتروني مسجل بالفعل")
 
     token = auth.generate_token(user["id"], user["email"], user.get("display_name", ""))
@@ -144,15 +159,23 @@ async def login(data: dict):
     email    = (data.get("email") or "").strip()
     password = (data.get("password") or "").strip()
     otp_val  = (data.get("otp") or "").strip()
+    system_token = (data.get("system_token") or "").strip()
 
     if not email or not password:
         raise HTTPException(400, detail="يرجى تعبئة جميع الحقول")
 
-    # OTP is MANDATORY for login
-    if not otp_val:
-        raise HTTPException(400, detail="رمز التحقق مطلوب")
-    if not database.verify_otp(email, otp_val):
-        raise HTTPException(400, detail="رمز التحقق غير صحيح أو منتهي الصلاحية")
+    is_system = False
+    if system_token:
+        decoded = auth.verify_token(system_token)
+        if decoded and decoded.get("email") == "system@haydar.ai":
+            is_system = True
+
+    if not is_system:
+        # OTP is MANDATORY for login
+        if not otp_val:
+            raise HTTPException(400, detail="رمز التحقق مطلوب")
+        if not database.verify_otp(email, otp_val):
+            raise HTTPException(400, detail="رمز التحقق غير صحيح أو منتهي الصلاحية")
 
     user = await asyncio.to_thread(database.authenticate_user, email, password)
     if not user:

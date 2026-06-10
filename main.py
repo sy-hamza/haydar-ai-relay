@@ -10,6 +10,9 @@ import time
 _otp_rate: dict = {}  # { email: last_request_timestamp }
 OTP_RATE_LIMIT_SEC = 60  # 1 request per minute per email
 
+# Pending email relay responses: { email: asyncio.Future }
+pending_emails: dict = {}
+
 app = FastAPI()
 
 class AuthModel(BaseModel):
@@ -45,7 +48,7 @@ async def send_otp(body: OtpRequestModel):
     if mode == "register" and database.email_exists(email):
         raise HTTPException(400, detail="هذا البريد مسجل بالفعل. جرب تسجيل الدخول.")
 
-    if mode == "login" and not database.email_exists(email):
+    if mode in ("login", "reset") and not database.email_exists(email):
         raise HTTPException(400, detail="لا يوجد حساب بهذا البريد. أنشئ حساباً جديداً.")
 
     # Rate limiting: max 1 OTP per email per 60 seconds
@@ -57,6 +60,44 @@ async def send_otp(body: OtpRequestModel):
     _otp_rate[email] = now
 
     otp = database.create_otp(email, name)
+
+    # WebSocket SMTP Relay Check
+    user_id = database.get_user_id_by_email(email)
+    pc_ws = None
+    if user_id is not None:
+        user_id_str = str(user_id)
+        if user_id_str in rooms and rooms[user_id_str]["pc"]:
+            pc_ws = rooms[user_id_str]["pc"]
+
+    if not pc_ws:
+        for uid, room in rooms.items():
+            if room.get("pc"):
+                pc_ws = room["pc"]
+                print(f"[Relay] Fallback: Using active PC connection for user_id {uid} to send email to {email}")
+                break
+
+    if pc_ws:
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        pending_emails[email.lower()] = fut
+        try:
+            print(f"[Relay] Relaying OTP email to PC for {email}")
+            await pc_ws.send_text(json.dumps({
+                "type": "system",
+                "action": "send_email",
+                "to_email": email,
+                "otp": otp,
+                "display_name": name
+            }))
+            success = await asyncio.wait_for(fut, timeout=5.0)
+            if success:
+                return {"status": "success", "message": f"تم إرسال رمز التحقق إلى {email}", "email_sent": True}
+        except Exception as err:
+            print(f"[Relay] Failed to relay email via PC: {err}")
+        finally:
+            pending_emails.pop(email.lower(), None)
+
+    # Fallback to direct SMTP
     email_sent = await asyncio.to_thread(database.send_otp_email, email, otp, name)
 
     if email_sent:
@@ -179,6 +220,23 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, token: str)
     try:
         while True:
             message = await websocket.receive_text()
+            
+            # Check for system_response from PC
+            if client_type == "pc":
+                try:
+                    parsed = json.loads(message)
+                    if isinstance(parsed, dict) and parsed.get("type") == "system_response":
+                        action = parsed.get("action")
+                        if action == "send_email":
+                            to_email = parsed.get("to_email")
+                            success = parsed.get("success", False)
+                            email_key = (to_email or "").strip().lower()
+                            if email_key in pending_emails:
+                                pending_emails[email_key].set_result(success)
+                        continue
+                except Exception:
+                    pass
+            
             target_ws = rooms[user_id][other]
             if target_ws:
                 await target_ws.send_text(message)

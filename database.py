@@ -186,3 +186,20 @@ def update_user_password(email: str, password: str) -> bool:
         return False
     finally:
         conn.close()
+
+def get_user_id_by_email(email: str) -> int | None:
+    email = email.strip().lower()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id FROM users WHERE email = ?", (email,))
+        row = c.fetchone()
+        if row:
+            return row[0]
+        return None
+    except Exception as e:
+        print(f"[DB Error] {e}")
+        return None
+    finally:
+        conn.close()
+

@@ -91,7 +91,7 @@ async def send_otp(body: OtpRequestModel):
             }))
             success = await asyncio.wait_for(fut, timeout=5.0)
             if success:
-                return {"status": "success", "message": f"تم إرسال رمز التحقق إلى {email}", "email_sent": True}
+                return {"status": "success", "message": f"تم إرسال رمز التحقق إلى {email} (تأكد من مجلد الرسائل غير المرغوب فيها Spam)", "email_sent": True}
         except Exception as err:
             print(f"[Relay] Failed to relay email via PC: {err}")
         finally:
@@ -101,7 +101,7 @@ async def send_otp(body: OtpRequestModel):
     email_sent = await asyncio.to_thread(database.send_otp_email, email, otp, name)
 
     if email_sent:
-        return {"status": "success", "message": f"تم إرسال رمز التحقق إلى {email}", "email_sent": True}
+        return {"status": "success", "message": f"تم إرسال رمز التحقق إلى {email} (تأكد من مجلد الرسائل غير المرغوب فيها Spam)", "email_sent": True}
     else:
         # Fallback: Render free tier blocks outgoing SMTP ports (25/465/587).
         # Return the generated OTP directly in the response so the user can register/login.

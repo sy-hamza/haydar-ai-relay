@@ -1,11 +1,12 @@
 import jwt
 import datetime
 import os
+from typing import Optional
 
 _default_secret = "haydar-ai-jwt-!@#$%^&*()_+2024-CHANGE-THIS-IN-PRODUCTION-ENV"
 JWT_SECRET = os.getenv("JWT_SECRET", _default_secret)
 if JWT_SECRET == _default_secret:
-    print("⚠️  WARNING: Using default JWT secret. Set JWT_SECRET env var in production!")
+    print("WARNING: Using default JWT secret. Set JWT_SECRET env var in production!")
 
 ALGORITHM = "HS256"
 
@@ -19,7 +20,7 @@ def generate_token(user_id: int, email: str, display_name: str = "") -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
 
-def verify_token(token: str) -> dict | None:
+def verify_token(token: str) -> Optional[dict]:
     """Verify JWT token. Returns payload dict on success, None on failure."""
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])

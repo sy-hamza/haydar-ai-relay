@@ -4,6 +4,11 @@ import database
 import auth
 import json
 import asyncio
+import time
+
+# ── Rate limiting (OTP) ───────────────────────────────────────────────────────
+_otp_rate: dict = {}  # { email: last_request_timestamp }
+OTP_RATE_LIMIT_SEC = 60  # 1 request per minute per email
 
 app = FastAPI()
 
@@ -25,15 +30,7 @@ class OtpVerifyModel(BaseModel):
 async def index():
     return {"status": "HAYDAR AI Relay Server is running!"}
 
-@app.get("/api/debug")
-async def debug_info():
-    import database as db
-    return {
-        "smtp_enabled": db.SMTP_ENABLED,
-        "smtp_user_set": bool(db.SMTP_USER),
-        "smtp_user_preview": db.SMTP_USER[:5] + "***" if db.SMTP_USER else "NOT SET",
-        "smtp_pass_set": bool(db.SMTP_PASS),
-    }
+# /api/debug removed — was exposing SMTP credentials publicly
 
 # ── Send OTP ───────────────────────────────────────────────────────────────────
 @app.post("/api/auth/send-otp")
@@ -50,6 +47,14 @@ async def send_otp(body: OtpRequestModel):
 
     if mode == "login" and not database.email_exists(email):
         raise HTTPException(400, detail="لا يوجد حساب بهذا البريد. أنشئ حساباً جديداً.")
+
+    # Rate limiting: max 1 OTP per email per 60 seconds
+    now = time.time()
+    last = _otp_rate.get(email, 0)
+    if now - last < OTP_RATE_LIMIT_SEC:
+        wait = int(OTP_RATE_LIMIT_SEC - (now - last))
+        raise HTTPException(429, detail=f"انتظر {wait} ثانية قبل الإعادة")
+    _otp_rate[email] = now
 
     otp = database.create_otp(email, name)
     email_sent = await asyncio.to_thread(database.send_otp_email, email, otp, name)
@@ -72,8 +77,10 @@ async def register(data: dict):
     if len(password) < 6:
         raise HTTPException(400, detail="يجب أن تكون كلمة المرور 6 خانات على الأقل")
 
-    # OTP is optional: if provided, verify it; otherwise proceed (for backward compat)
-    if otp_val and not database.verify_otp(email, otp_val):
+    # OTP is MANDATORY for registration
+    if not otp_val:
+        raise HTTPException(400, detail="رمز التحقق مطلوب")
+    if not database.verify_otp(email, otp_val):
         raise HTTPException(400, detail="رمز التحقق غير صحيح أو منتهي الصلاحية")
 
     user = await asyncio.to_thread(database.register_user, name, email, password)
@@ -93,7 +100,10 @@ async def login(data: dict):
     if not email or not password:
         raise HTTPException(400, detail="يرجى تعبئة جميع الحقول")
 
-    if otp_val and not database.verify_otp(email, otp_val):
+    # OTP is MANDATORY for login
+    if not otp_val:
+        raise HTTPException(400, detail="رمز التحقق مطلوب")
+    if not database.verify_otp(email, otp_val):
         raise HTTPException(400, detail="رمز التحقق غير صحيح أو منتهي الصلاحية")
 
     user = await asyncio.to_thread(database.authenticate_user, email, password)

@@ -2,7 +2,11 @@ import jwt
 import datetime
 import os
 
-JWT_SECRET = os.getenv("JWT_SECRET", "haydar-ai-jwt-super-secret-key-123456")
+_default_secret = "haydar-ai-jwt-!@#$%^&*()_+2024-CHANGE-THIS-IN-PRODUCTION-ENV"
+JWT_SECRET = os.getenv("JWT_SECRET", _default_secret)
+if JWT_SECRET == _default_secret:
+    print("⚠️  WARNING: Using default JWT secret. Set JWT_SECRET env var in production!")
+
 ALGORITHM = "HS256"
 
 def generate_token(user_id: int, email: str, display_name: str = "") -> str:

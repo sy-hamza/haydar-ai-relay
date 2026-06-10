@@ -11,6 +11,7 @@ import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
+from typing import Optional
 
 load_dotenv()
 
@@ -19,9 +20,17 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "haydar_relay
 # ── SMTP (optional) ───────────────────────────────────────────────────────────
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "hamoz5184@gmail.com")
-SMTP_PASS = os.getenv("SMTP_PASS", "qwpgbuefnntzsfjt")
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_ENABLED = bool(SMTP_USER and SMTP_PASS)
+
+def get_smtp_config():
+    load_dotenv(override=True)
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER", "")
+    password = os.getenv("SMTP_PASS", "")
+    return host, port, user, password, bool(user and password)
 
 # ── In-memory OTP store ───────────────────────────────────────────────────────
 _otp_store: dict = {}
@@ -73,7 +82,7 @@ def email_exists(email: str) -> bool:
     conn.close()
     return exists
 
-def register_user(display_name: str, email: str, password: str) -> dict | None:
+def register_user(display_name: str, email: str, password: str) -> Optional[dict]:
     email = email.strip().lower()
     pw_hash = hash_password(password)
     conn = sqlite3.connect(DB_PATH)
@@ -91,7 +100,7 @@ def register_user(display_name: str, email: str, password: str) -> dict | None:
     finally:
         conn.close()
 
-def authenticate_user(email: str, password: str) -> dict | None:
+def authenticate_user(email: str, password: str) -> Optional[dict]:
     email = email.strip().lower()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -127,7 +136,8 @@ def verify_otp(email: str, otp: str) -> bool:
 
 # ── Email sending ─────────────────────────────────────────────────────────────
 def send_otp_email(to_email: str, otp: str, display_name: str = "") -> bool:
-    if not SMTP_ENABLED:
+    smtp_host, smtp_port, smtp_user, smtp_pass, smtp_enabled = get_smtp_config()
+    if not smtp_enabled:
         print(f"\n{'='*50}")
         print(f"[RELAY OTP - DEV MODE] Email: {to_email}")
         print(f"[RELAY OTP - DEV MODE] Code : {otp}")
@@ -161,12 +171,16 @@ def send_otp_email(to_email: str, otp: str, display_name: str = "") -> bool:
 </html>"""
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"HAYDAR AI — رمز التحقق: {otp}"
-        msg["From"] = f"HAYDAR AI <{SMTP_USER}>"
+        msg["From"] = f"HAYDAR AI <{smtp_user}>"
         msg["To"] = to_email
         msg.attach(MIMEText(html, "html", "utf-8"))
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as s:
-            s.ehlo(); s.starttls(); s.login(SMTP_USER, SMTP_PASS)
-            s.sendmail(SMTP_USER, to_email, msg.as_string())
+        print(f"[SMTP] Sending relay OTP email to {to_email} via {smtp_user}")
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+            s.ehlo(); s.starttls(); s.login(smtp_user, smtp_pass)
+            refused = s.sendmail(smtp_user, to_email, msg.as_string())
+            if refused:
+                print(f"[SMTP] Refused recipients: {list(refused.keys())}")
+                return False
         return True
     except Exception as e:
         print(f"[SMTP Error] {e}")
@@ -187,7 +201,7 @@ def update_user_password(email: str, password: str) -> bool:
     finally:
         conn.close()
 
-def get_user_id_by_email(email: str) -> int | None:
+def get_user_id_by_email(email: str) -> Optional[int]:
     email = email.strip().lower()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -202,4 +216,3 @@ def get_user_id_by_email(email: str) -> int | None:
         return None
     finally:
         conn.close()
-

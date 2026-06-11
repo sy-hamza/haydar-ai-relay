@@ -20,16 +20,16 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "haydar_relay
 # ── SMTP (optional) ───────────────────────────────────────────────────────────
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASS = os.getenv("SMTP_PASS", "")
+SMTP_USER = os.getenv("SMTP_USER", "hamoz5184@gmail.com")
+SMTP_PASS = os.getenv("SMTP_PASS", "qwpgbuefnntzsfjt")
 SMTP_ENABLED = bool(SMTP_USER and SMTP_PASS)
 
 def get_smtp_config():
     load_dotenv(override=True)
     host = os.getenv("SMTP_HOST", "smtp.gmail.com")
     port = int(os.getenv("SMTP_PORT", "587"))
-    user = os.getenv("SMTP_USER", "")
-    password = os.getenv("SMTP_PASS", "")
+    user = os.getenv("SMTP_USER", "hamoz5184@gmail.com")
+    password = os.getenv("SMTP_PASS", "qwpgbuefnntzsfjt")
     return host, port, user, password, bool(user and password)
 
 # ── In-memory OTP store ───────────────────────────────────────────────────────
